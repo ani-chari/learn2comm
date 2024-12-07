@@ -3,11 +3,11 @@ import time
 import numpy as np
 from simulator import Simulator
 from infrastructure import Infrastructure
-from knapsack import Knapsack
+from iknap.knapsack import Knapsack
 import random
-from IDM import IDM
+from cars.IDM import IDM
 from scipy.interpolate import CubicSpline
-import heuristic_model
+import iknap.heuristic_model as heuristic_model
 
 def make_path(start, goal):
     m = (goal[1] - start[1]) / (goal[0] - start[0])

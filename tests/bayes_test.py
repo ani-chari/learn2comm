@@ -1,8 +1,8 @@
-from highway_simulator import HighwaySimulator
+from cars.highway_simulator import HighwaySimulator
 from infrastructure import Infrastructure
-from knapsack import Knapsack
+from iknap.knapsack import Knapsack
 import random
-from IDM import IDM
+from cars.IDM import IDM
 
 import matplotlib.pyplot as plt
 
