@@ -10,8 +10,9 @@ class GymWrapper(gym.Env):
 
     metadata = {} # TODO
 
-    def __init__(self):
+    def __init__(self, to_render=False):
         super(GymWrapper, self).__init__()
+        self.to_render = to_render
 
         self.m = 5
         self.n = 5
@@ -22,11 +23,12 @@ class GymWrapper(gym.Env):
         self.action_space = spaces.MultiBinary(shape=(self.n, self.n, self.m))
 
         self.observation_space = spaces.Dict()
-        self.observation_space['agent_states'] = spaces.Box(shape=(4, self.n), dtype=np.float32)
-        self.observation_space['agent_beliefs'] = spaces.Box(shape=(2, self.n), dtype=np.float32)
-        self.observation_space['agent_observations'] = spaces.Box(shape=(2, self.n), dtype=np.float32)
-        self.observation_space['subject_states'] = spaces.Box(shape=(4, self.m), dtype=np.float32)
-        self.observation_space['wall_locations'] = spaces.Box(shape=(4, self.num_walls))
+        self.observation_space['agent_states'] = spaces.Box(shape=(self.n, 4), dtype=np.float32)
+        self.observation_space['agent_beliefs'] = spaces.Box(shape=(self.n, 4), dtype=np.float32)
+        self.observation_space['agent_observations'] = spaces.Box(shape=(self.n, 4), dtype=np.float32)
+        self.observation_space['agent_goals'] = spaces.Box(shape=(self.n, 2), dtype=np.float32)
+        self.observation_space['subject_states'] = spaces.Box(shape=(self.m, 4), dtype=np.float32)
+        self.observation_space['wall_locations'] = spaces.Box(shape=(self.num_walls, 4))
 
     def initialize_sim(self):
 
@@ -47,12 +49,12 @@ class GymWrapper(gym.Env):
             x['vR'].append(np.array([0., 0.]))
             x['aR'].append(np.array([0., 0.]))
 
-        # self.num_walls = random.randint(10, 20)
         for i in range(self.num_walls):
             p1 = np.array([random.uniform(-100, 100), random.uniform(-100, 100)])
             eps = 50
             p2 = np.array([p1[0] + random.uniform(-eps, eps), p1[1] + random.uniform(-eps, eps)])
             x['walls'].append((p1, p2))
+        self.walls = x['walls']
 
         dt = 0.1
         sim = Simulator(x, self.m, self.n, dt)
@@ -60,11 +62,29 @@ class GymWrapper(gym.Env):
         sim.add_infra(infra)
 
         return sim
+    
+    def compute_goal_dists(self):
+        normsq = lambda x : x.T @ x
+        return sum([normsq(self.sim.x['pR'][i] - self.sim.x['gR'][i]) for i in range(self.n)])
+    
+    def formatted_observation(self):
+        obs = {}
+        obs['agent_states'] = np.stack([np.concatenate([self.sim.x['pR'][i], self.sim.x['vR'][i]]) for i in range(self.n)])
+        obs['agent_beliefs'] = np.stack([np.asarray(self.sim.infra.bel[i]).flatten() for i in range(self.n)])
+        obs['agent_observations'] = np.stack([np.asarray(self.sim.infra.obs[i]).flatten() for i in range(self.n)])
+        obs['agent_goals'] = np.stack([self.sim.x['gR'][i] for i in range(self.n)])
+        obs['subject_states'] = np.stack([np.concatenate([self.sim.x['pH'][i], self.sim.x['vH'][i]]) for i in range(self.m)])
+        obs['wall_locations'] = np.stack([np.asarray(self.walls[i]).flatten() for i in range(self.num_walls)])
+        return obs
+
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
         self.sim = self.initialize_sim()
-        return _, {} # TODO: return correctly formatted initial observation
+
+        self.goal_dists = self.compute_goal_dists()
+
+        return self.formatted_observation(), {}
 
     def step(self, action):
 
@@ -83,19 +103,27 @@ class GymWrapper(gym.Env):
             for h in range(self.m):
                 self.sim.infra.sense(r, h)
 
-        new_observations = # TODO
+        # get new observation
+        new_observation = self.formatted_observation()
 
-        reward = # TODO
+        # compute reward as weighted sum of progress and bandwidth use
+        new_goal_dists = self.compute_goal_dists()
+        progress = new_goal_dists - self.goal_dists
+        self.goal_dists = new_goal_dists
+        bandwidth_cost = np.sum(action) # TODO: include unique bandwidth costs per comm?
+        alpha = 1 # TODO: tune
+        reward = progress - alpha * bandwidth_cost # TODO: include fixed end reward for agent reaching goal?
 
         # stop if all agents reached goal or time limit reached
         terminated = -1 not in self.sim.done or self.sim.t == self.t_max
         truncated = False
         info = {}
 
-        return (new_observations, reward, terminated, truncated, info)
+        return (new_observation, reward, terminated, truncated, info)
 
     def render(self):
-        pass
+        if self.to_render:
+            self.sim.vis()
 
     def close(self):
         pass
