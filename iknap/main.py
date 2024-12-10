@@ -50,8 +50,8 @@ def make_path(start, goal):
 
 def run_sim(model):
 
-    m = 1
-    n = 1
+    m = random.randint(2, 5)
+    n = random.randint(2, 5)
 
     # C = [[random.randint(1, 10) for j in range(n)] 
     #         for i in range(n)]
@@ -93,6 +93,8 @@ def run_sim(model):
     sim.add_infra(infra)
     knap = Knapsack(model, sim, infra, C, beta)
 
+    comm_freq = 5
+
     while sim.t <= t_max:
 
         # iterate simulation
@@ -104,17 +106,16 @@ def run_sim(model):
             for h in range(m):
                 infra.sense(r, h)
 
-        # if sim.t % 5 == 0:
-        #     # run knapsack to decide communications
-        #     comms = [(a, b, h) for a in range(n) for b in range(n) if a != b for h in range(m)] # consider all potential comms
-        #     chosen = knap.sack(comms)[1] # indices of chosen comms
+        if sim.t % comm_freq == 0:
+            # run knapsack to decide communications
+            comms = [(a, b, h) for a in range(n) for b in range(n) if a != b for h in range(m)] # consider all potential comms
+            chosen = knap.sack(comms)[1] # indices of chosen comms
 
-        #     # execute communications
-        #     for i in chosen:
-        #         (a, b, h) = comms[i]
-        #         infra.share(a, b, h)
+            # execute communications
+            for i in chosen:
+                (a, b, h) = comms[i]
+                infra.share(a, b, h)
 
-        # input()
 
     end = time.time()
     print("RUNTIME", end - start)

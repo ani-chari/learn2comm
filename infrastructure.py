@@ -101,6 +101,8 @@ class Infrastructure:
         return (pos, vel)
     
     def share(self, sender, receiver, subject):
+        if sender == receiver:
+            return
         self._update_belief(sender, receiver, subject)
 
     def test_share(self, sender, receiver, subject):

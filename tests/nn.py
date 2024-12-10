@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 
-import main
+import iknap.main as main
 
 device = (
     "cuda"
