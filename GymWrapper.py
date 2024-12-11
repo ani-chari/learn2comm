@@ -16,7 +16,7 @@ class GymWrapper(gym.Env):
 
         self.m = 5
         self.n = 5
-        self.walls = 10
+        self.num_walls = 10
 
         self.t_max = 100
 
@@ -76,7 +76,6 @@ class GymWrapper(gym.Env):
         obs['subject_states'] = np.stack([np.concatenate([self.sim.x['pH'][i], self.sim.x['vH'][i]]) for i in range(self.m)])
         obs['wall_locations'] = np.stack([np.asarray(self.walls[i]).flatten() for i in range(self.num_walls)])
         return obs
-
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
