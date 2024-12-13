@@ -6,12 +6,12 @@ from simulator import Simulator
 from infrastructure import Infrastructure
 import random
 
-class GymWrapper(gym.Env):
+class LearningEnv(gym.Env):
 
     metadata = {} # TODO
 
     def __init__(self, to_render=False):
-        super(GymWrapper, self).__init__()
+        super(LearningEnv, self).__init__()
         self.to_render = to_render
 
         self.m = 5
@@ -20,15 +20,16 @@ class GymWrapper(gym.Env):
 
         self.t_max = 100
 
-        self.action_space = spaces.MultiBinary(shape=(self.n, self.n, self.m))
+        self.action_space = spaces.MultiBinary(self.n)
+        # self.action_space = spaces.MultiBinary(shape=(self.n, self.n, self.m))
 
         self.observation_space = spaces.Dict()
-        self.observation_space['agent_states'] = spaces.Box(shape=(self.n, 4), dtype=np.float32)
-        self.observation_space['agent_beliefs'] = spaces.Box(shape=(self.n, 4), dtype=np.float32)
-        self.observation_space['agent_observations'] = spaces.Box(shape=(self.n, 4), dtype=np.float32)
-        self.observation_space['agent_goals'] = spaces.Box(shape=(self.n, 2), dtype=np.float32)
-        self.observation_space['subject_states'] = spaces.Box(shape=(self.m, 4), dtype=np.float32)
-        self.observation_space['wall_locations'] = spaces.Box(shape=(self.num_walls, 4))
+        self.observation_space['agent_states'] = spaces.Box(low=-np.inf, high=np.inf, shape=(self.n, 4), dtype=np.float64)
+        self.observation_space['agent_beliefs'] = spaces.Box(low=-np.inf, high=np.inf, shape=(self.n, 4), dtype=np.float64)
+        self.observation_space['agent_observations'] = spaces.Box(low=-np.inf, high=np.inf, shape=(self.n, 4), dtype=np.float64)
+        self.observation_space['agent_goals'] = spaces.Box(low=-100, high=100, shape=(self.n, 2), dtype=np.float64)
+        self.observation_space['subject_states'] = spaces.Box(low=-np.inf, high=np.inf, shape=(self.m, 4), dtype=np.float64)
+        self.observation_space['wall_locations'] = spaces.Box(low=-100, high=100, shape=(self.num_walls, 4))
 
     def initialize_sim(self):
 
@@ -70,11 +71,15 @@ class GymWrapper(gym.Env):
     def formatted_observation(self):
         obs = {}
         obs['agent_states'] = np.stack([np.concatenate([self.sim.x['pR'][i], self.sim.x['vR'][i]]) for i in range(self.n)])
+        print("HERE", self.sim.infra.bel[0])
         obs['agent_beliefs'] = np.stack([np.asarray(self.sim.infra.bel[i]).flatten() for i in range(self.n)])
         obs['agent_observations'] = np.stack([np.asarray(self.sim.infra.obs[i]).flatten() for i in range(self.n)])
         obs['agent_goals'] = np.stack([self.sim.x['gR'][i] for i in range(self.n)])
         obs['subject_states'] = np.stack([np.concatenate([self.sim.x['pH'][i], self.sim.x['vH'][i]]) for i in range(self.m)])
         obs['wall_locations'] = np.stack([np.asarray(self.walls[i]).flatten() for i in range(self.num_walls)])
+        print([obs[key].shape for key in obs.keys()])
+        print(obs['agent_beliefs'])
+        print(obs['agent_observations'])
         return obs
 
     def reset(self, seed=None, options=None):
