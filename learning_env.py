@@ -17,43 +17,60 @@ class LearningEnv(gym.Env):
         self.m = 5
         self.n = 5
         self.num_walls = 10
-
         self.t_max = 100
 
-        self.action_space = spaces.MultiBinary(self.n)
-        # self.action_space = spaces.MultiBinary(shape=(self.n, self.n, self.m))
+        self.action_space = spaces.MultiBinary((self.n, self.n, self.m))
 
-        self.observation_space = spaces.Dict()
-        self.observation_space['agent_states'] = spaces.Box(low=-np.inf, high=np.inf, shape=(self.n, 4), dtype=np.float64)
-        self.observation_space['agent_beliefs'] = spaces.Box(low=-np.inf, high=np.inf, shape=(self.n, 4), dtype=np.float64)
-        self.observation_space['agent_observations'] = spaces.Box(low=-np.inf, high=np.inf, shape=(self.n, 4), dtype=np.float64)
-        self.observation_space['agent_goals'] = spaces.Box(low=-100, high=100, shape=(self.n, 2), dtype=np.float64)
-        self.observation_space['subject_states'] = spaces.Box(low=-np.inf, high=np.inf, shape=(self.m, 4), dtype=np.float64)
-        self.observation_space['wall_locations'] = spaces.Box(low=-100, high=100, shape=(self.num_walls, 4))
+        # Flatten each component of the observation space
+        self.observation_space = spaces.Dict({
+            'agent_states': spaces.Box(low=-np.inf, high=np.inf, 
+                                       shape=(self.n * 4,), dtype=np.float64),
+            'agent_beliefs': spaces.Box(low=-np.inf, high=np.inf, 
+                                        shape=(self.n * 8,), dtype=np.float64),
+            'agent_observations': spaces.Box(low=-np.inf, high=np.inf, 
+                                             shape=(self.n * 4,), dtype=np.float64),
+            'agent_goals': spaces.Box(low=-100, high=100, 
+                                      shape=(self.n * 2,), dtype=np.float64),
+            'subject_states': spaces.Box(low=-np.inf, high=np.inf, 
+                                         shape=(self.m * 4,), dtype=np.float64),
+            'wall_locations': spaces.Box(low=-100, high=100, 
+                                         shape=(self.num_walls * 4,), dtype=np.float64)
+        })
+
 
     def initialize_sim(self):
 
         x = {'pH': [], 'vH': [], 'aH': [], 'gH': [], 'path': [],
             'pR': [], 'vR': [], 'aR': [], 'gR': [],
             'walls': []}
+        
+        bounds = (-100, 100)
 
         for i in range(self.m):
-            x['pH'].append(np.array([random.uniform(-100, 100), random.uniform(-100, 100)]))
-            x['gH'].append(np.array([random.uniform(-100, 100), random.uniform(-100, 100)]))
+            x['pH'].append(np.array([random.uniform(bounds[0], bounds[1]), 
+                                     random.uniform(bounds[0], bounds[1])]))
+            x['gH'].append(np.array([random.uniform(bounds[0], bounds[1]), 
+                                     random.uniform(bounds[0], bounds[1])]))
             x['path'].append(path_maker.make_path(x['pH'][i], x['gH'][i]))
             x['vH'].append(np.array([0., 0.]))
             x['aH'].append(np.array([0., 0.]))
 
         for i in range(self.n):
-            x['pR'].append(np.array([random.uniform(-100, 100), random.uniform(-100, 100)]))
-            x['gR'].append(np.array([random.uniform(-100, 100), random.uniform(-100, 100)]))
+            x['pR'].append(np.array([random.uniform(bounds[0], bounds[1]), 
+                                     random.uniform(bounds[0], bounds[1])]))
+            x['gR'].append(np.array([random.uniform(bounds[0], bounds[1]), 
+                                     random.uniform(bounds[0], bounds[1])]))
             x['vR'].append(np.array([0., 0.]))
             x['aR'].append(np.array([0., 0.]))
 
+        eps = 50
         for i in range(self.num_walls):
-            p1 = np.array([random.uniform(-100, 100), random.uniform(-100, 100)])
-            eps = 50
-            p2 = np.array([p1[0] + random.uniform(-eps, eps), p1[1] + random.uniform(-eps, eps)])
+            p1 = np.array([random.uniform(bounds[0], bounds[1]), 
+                        random.uniform(bounds[0], bounds[1])])
+            p2 = np.array([
+                np.clip(p1[0] + random.uniform(-eps, eps), bounds[0], bounds[1]),
+                np.clip(p1[1] + random.uniform(-eps, eps), bounds[0], bounds[1])
+            ])
             x['walls'].append((p1, p2))
         self.walls = x['walls']
 
@@ -70,16 +87,38 @@ class LearningEnv(gym.Env):
     
     def formatted_observation(self):
         obs = {}
-        obs['agent_states'] = np.stack([np.concatenate([self.sim.x['pR'][i], self.sim.x['vR'][i]]) for i in range(self.n)])
-        print("HERE", self.sim.infra.bel[0])
-        obs['agent_beliefs'] = np.stack([np.asarray(self.sim.infra.bel[i]).flatten() for i in range(self.n)])
-        obs['agent_observations'] = np.stack([np.asarray(self.sim.infra.obs[i]).flatten() for i in range(self.n)])
-        obs['agent_goals'] = np.stack([self.sim.x['gR'][i] for i in range(self.n)])
-        obs['subject_states'] = np.stack([np.concatenate([self.sim.x['pH'][i], self.sim.x['vH'][i]]) for i in range(self.m)])
-        obs['wall_locations'] = np.stack([np.asarray(self.walls[i]).flatten() for i in range(self.num_walls)])
-        print([obs[key].shape for key in obs.keys()])
-        print(obs['agent_beliefs'])
-        print(obs['agent_observations'])
+        obs['agent_states'] = np.concatenate([
+            np.concatenate([self.sim.x['pR'][i], self.sim.x['vR'][i]]) 
+            for i in range(self.n)
+        ])
+        obs['agent_beliefs'] = np.concatenate([
+            np.concatenate([
+                self.sim.infra.bel[i][0]['pos'][0],
+                self.sim.infra.bel[i][0]['vel'][0],
+                np.sqrt(self.sim.infra.bel[i][0]['pos'][1]),
+                np.sqrt(self.sim.infra.bel[i][0]['vel'][1])
+            ]) 
+            for i in range(self.n)
+        ])
+        obs['agent_observations'] = np.concatenate([
+            np.concatenate([
+                self.sim.infra.obs[i][0]['pos'][-1] if self.sim.infra.obs[i][0]['pos'] else np.zeros(2),
+                self.sim.infra.obs[i][0]['vel'][-1] if self.sim.infra.obs[i][0]['vel'] else np.zeros(2)
+            ])
+            for i in range(self.n)
+        ])
+        obs['agent_goals'] = np.concatenate([
+            self.sim.x['gR'][i] 
+            for i in range(self.n)
+        ])
+        obs['subject_states'] = np.concatenate([
+            np.concatenate([self.sim.x['pH'][i], self.sim.x['vH'][i]]) 
+            for i in range(self.m)
+        ])
+        obs['wall_locations'] = np.concatenate([
+            np.concatenate([w[0], w[1]]) 
+            for w in self.walls
+        ])
         return obs
 
     def reset(self, seed=None, options=None):

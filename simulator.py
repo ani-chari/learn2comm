@@ -68,9 +68,7 @@ class Simulator:
                 speed2 = self.x['vR'][i].T @ self.x['vR'][i]
                 a_max = 10 # TODO: tune
                 dist2 = trajectory_predictor.collision_dist2(self.x, self.m, self.infra, i)
-                print(round((speed2 / (2 * a_max))**2, 3))
                 sig = -1 if dist2 < round((speed2 / (2 * a_max))**2, 3) else 1 # brake if needed, else accelerate
-                print(sig)
                 aR.append(dir / np.linalg.norm(dir) * a_max * sig)
 
         return aR

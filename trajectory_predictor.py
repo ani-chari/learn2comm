@@ -20,7 +20,6 @@ def collision_dist2(x, m, infra, agent): # worst-case min dist2 from collision w
         inter = _intersect(pH, vH, x['pR'][agent], x['vR'][agent])
         if inter is not None:
             dist2_u = (pH - inter).T @ (pH - inter)
-            print("DIST2", dist2_u)
             dist2 = dist2_u.n - dist2_u.s # 1 stdev below mean
             min_dist2 = min(min_dist2, dist2)
     return max(0, min_dist2)
