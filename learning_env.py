@@ -170,8 +170,8 @@ class LearningEnv(gym.Env):
         reward = progress - alpha * bandwidth_cost # TODO: include fixed end reward for agent reaching goal?
 
         # stop if all agents reached goal or time limit reached
-        terminated = -1 not in self.sim.done or self.sim.t == self.t_max
-        truncated = False
+        terminated = -1 not in self.sim.done
+        truncated = self.sim.t == self.t_max
         info = {}
 
         return (new_observation, reward, terminated, truncated, info)
