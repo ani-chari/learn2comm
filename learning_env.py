@@ -10,16 +10,17 @@ class LearningEnv(gym.Env):
 
     metadata = {} # TODO
 
-    def __init__(self, to_render=False):
+    def __init__(self, m=5, n=5, num_walls=10, to_render=False):
         super(LearningEnv, self).__init__()
         self.to_render = to_render
 
-        self.m = 5
-        self.n = 5
-        self.num_walls = 10
+        self.m = m
+        self.n = n
+        self.num_walls = num_walls
         self.t_max = 100
 
-        self.action_space = spaces.MultiBinary((self.n, self.n, self.m))
+        # Flatten to 1D
+        self.action_space = spaces.MultiBinary(self.n * self.n * self.m)
 
         # Flatten each component of the observation space
         self.observation_space = spaces.Dict({
@@ -86,11 +87,14 @@ class LearningEnv(gym.Env):
         return sum([normsq(self.sim.x['pR'][i] - self.sim.x['gR'][i]) for i in range(self.n)])
     
     def formatted_observation(self):
+
         obs = {}
+
         obs['agent_states'] = np.concatenate([
             np.concatenate([self.sim.x['pR'][i], self.sim.x['vR'][i]]) 
             for i in range(self.n)
         ])
+
         obs['agent_beliefs'] = np.concatenate([
             np.concatenate([
                 self.sim.infra.bel[i][0]['pos'][0],
@@ -100,6 +104,7 @@ class LearningEnv(gym.Env):
             ]) 
             for i in range(self.n)
         ])
+
         obs['agent_observations'] = np.concatenate([
             np.concatenate([
                 self.sim.infra.obs[i][0]['pos'][-1] if self.sim.infra.obs[i][0]['pos'] else np.zeros(2),
@@ -107,18 +112,22 @@ class LearningEnv(gym.Env):
             ])
             for i in range(self.n)
         ])
+
         obs['agent_goals'] = np.concatenate([
             self.sim.x['gR'][i] 
             for i in range(self.n)
         ])
+
         obs['subject_states'] = np.concatenate([
             np.concatenate([self.sim.x['pH'][i], self.sim.x['vH'][i]]) 
             for i in range(self.m)
         ])
+
         obs['wall_locations'] = np.concatenate([
             np.concatenate([w[0], w[1]]) 
             for w in self.walls
         ])
+
         return obs
 
     def reset(self, seed=None, options=None):
@@ -131,11 +140,14 @@ class LearningEnv(gym.Env):
 
     def step(self, action):
 
+        # Reshape flattened action back to 3D
+        action_3d = action.reshape((self.n, self.n, self.m))
+
         # execute communications
         for a in range(self.n):
             for b in range(self.n):
                 for h in range(self.m):
-                    if action[a][b][h]:
+                    if action_3d[a][b][h]:
                         self.sim.infra.share(a, b, h)
 
         # iterate simulation
