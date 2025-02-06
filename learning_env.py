@@ -22,22 +22,22 @@ class LearningEnv(gym.Env):
         # Flatten to 1D
         self.action_space = spaces.MultiBinary(self.n * self.n * self.m)
 
-        # Flatten each component of the observation space
+        # Normalize observation space
         self.observation_space = spaces.Dict({
-            'agent_states': spaces.Box(low=-np.inf, high=np.inf, 
-                                       shape=(self.n * 4,), dtype=np.float64),
-            'agent_beliefs': spaces.Box(low=-np.inf, high=np.inf, 
-                                        shape=(self.n * 8,), dtype=np.float64),
-            'agent_observations': spaces.Box(low=-np.inf, high=np.inf, 
-                                             shape=(self.n * 4,), dtype=np.float64),
-            'agent_goals': spaces.Box(low=-100, high=100, 
-                                      shape=(self.n * 2,), dtype=np.float64),
-            'subject_states': spaces.Box(low=-np.inf, high=np.inf, 
-                                         shape=(self.m * 4,), dtype=np.float64),
-            'wall_locations': spaces.Box(low=-100, high=100, 
-                                         shape=(self.num_walls * 4,), dtype=np.float64)
+            'agent_states': spaces.Box(low=-1, high=1, shape=(self.n * 4,), dtype=np.float64),
+            'agent_beliefs': spaces.Box(low=-1, high=1, shape=(self.n * 8,), dtype=np.float64),
+            'agent_observations': spaces.Box(low=-1, high=1, shape=(self.n * 4,), dtype=np.float64),
+            'agent_goals': spaces.Box(low=-1, high=1, shape=(self.n * 2,), dtype=np.float64),
+            'subject_states': spaces.Box(low=-1, high=1, shape=(self.m * 4,), dtype=np.float64),
+            'wall_locations': spaces.Box(low=-1, high=1, shape=(self.num_walls * 4,), dtype=np.float64)
         })
 
+        # Initialize normalization parameters
+        self.obs_low = -100
+        self.obs_high = 100
+
+    def normalize_obs(self, obs):
+            return 2 * (obs - self.obs_low) / (self.obs_high - self.obs_low) - 1
 
     def initialize_sim(self):
 
@@ -128,6 +128,10 @@ class LearningEnv(gym.Env):
             for w in self.walls
         ])
 
+        # Normalize each observation component
+        for key in obs:
+            obs[key] = self.normalize_obs(obs[key])
+        
         return obs
 
     def reset(self, seed=None, options=None):
@@ -161,13 +165,24 @@ class LearningEnv(gym.Env):
         # get new observation
         new_observation = self.formatted_observation()
 
-        # compute reward as weighted sum of progress and bandwidth use
+        # Shaped reward
         new_goal_dists = self.compute_goal_dists()
-        progress = new_goal_dists - self.goal_dists
+        progress = self.goal_dists - new_goal_dists  # Note: reversed to make positive progress a positive reward
         self.goal_dists = new_goal_dists
-        bandwidth_cost = np.sum(action) # TODO: include unique bandwidth costs per comm?
-        alpha = 1 # TODO: tune
-        reward = progress - alpha * bandwidth_cost # TODO: include fixed end reward for agent reaching goal?
+        bandwidth_cost = np.sum(action)
+        
+        # Shaped reward components
+        distance_reward = progress
+        communication_penalty = -0.1 * bandwidth_cost
+        goal_reward = 10 if terminated else 0
+        time_penalty = -0.01  # Small penalty for each step to encourage faster completion
+        
+        alpha = [1, 1, 1, 1] # TODO: tune
+        # Combine reward components
+        reward = alpha[0] * distance_reward 
+                + alpha[1] * communication_penalty 
+                + alpha[2] * goal_reward 
+                + alpha[3] * time_penalty
 
         # stop if all agents reached goal or time limit reached
         terminated = -1 not in self.sim.done
