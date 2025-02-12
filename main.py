@@ -17,6 +17,17 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
 import tensorflow as tf
 
+class EpisodeCallback(BaseCallback):
+    def __init__(self, verbose=0):
+        super(EpisodeCallback, self).__init__(verbose)
+        self.episode_count = 0
+
+    def _on_step(self):
+        if self.training_env.get_attr('current_step')[0] == 0:  # Episode just reset
+            self.episode_count += 1
+            print(f"Episode {self.episode_count} completed. Total steps: {self.num_timesteps}")
+        return True
+
 class TensorboardCallback(BaseCallback):
     def __init__(self, verbose=0):
         super(TensorboardCallback, self).__init__(verbose)
@@ -40,12 +51,13 @@ model = PPO("MultiInputPolicy", env, verbose=1, tensorboard_log=log_dir)
 
 # Set up the callbacks
 eval_callback = EvalCallback(env, best_model_save_path='./best_model',
-                             log_path='./logs/', eval_freq=500,
+                             log_path='./logs/', eval_freq=5000,
                              deterministic=True, render=False)
 tensorboard_callback = TensorboardCallback()
+episode_callback = EpisodeCallback()
 
 # Train the model
-model.learn(total_timesteps=25000, callback=[eval_callback, tensorboard_callback])
+model.learn(total_timesteps=1000000, callback=[eval_callback, tensorboard_callback, episode_callback]) # TODO: increase timesteps (10x)?
 
 # Save the final model
 model.save("comm-v1")

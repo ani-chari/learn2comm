@@ -8,6 +8,8 @@ import random
 
 class LearningEnv(gym.Env):
 
+    # TODO: ADD COMM FREQUENCY
+
     metadata = {} # TODO
 
     def __init__(self, m=5, n=5, num_walls=10, to_render=False):
@@ -17,7 +19,6 @@ class LearningEnv(gym.Env):
         self.m = m
         self.n = n
         self.num_walls = num_walls
-        self.t_max = 100
 
         # Flatten to 1D
         self.action_space = spaces.MultiBinary(self.n * self.n * self.m)
@@ -35,6 +36,9 @@ class LearningEnv(gym.Env):
         # Initialize normalization parameters
         self.obs_low = -100
         self.obs_high = 100
+
+        self.max_steps = 10000
+        self.current_step = 0
 
     def normalize_obs(self, obs):
             return 2 * (obs - self.obs_low) / (self.obs_high - self.obs_low) - 1
@@ -137,22 +141,27 @@ class LearningEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
         self.sim = self.initialize_sim()
-
         self.goal_dists = self.compute_goal_dists()
-
+        self.current_step = 0
         return self.formatted_observation(), {}
 
     def step(self, action):
 
+        self.current_step += 1
+
         # Reshape flattened action back to 3D
         action_3d = action.reshape((self.n, self.n, self.m))
 
+        count = 0
         # execute communications
         for a in range(self.n):
             for b in range(self.n):
                 for h in range(self.m):
                     if action_3d[a][b][h]:
+                        count += 1
                         self.sim.infra.share(a, b, h)
+
+        # print("TOTAL COMM COUNT:", count)
 
         # iterate simulation
         x = self.sim.move()
@@ -165,29 +174,42 @@ class LearningEnv(gym.Env):
         # get new observation
         new_observation = self.formatted_observation()
 
+
+        # TODO: NEED TO MAKE TERMINATION CONDITION REINITIALIZE A NEW RANDOMIZED ENVIRONMENT
+
+        # Check if episode should terminate
+        terminated = all(self.sim.done[i] != -1 for i in range(self.n))  # All robots reached goals
+        truncated = self.current_step >= self.max_steps  # Max steps reached
+        info = {}
+
+        if terminated:
+            print("TERMINATED", self.current_step)
+        if truncated:
+            print("TRUNCATED", self.current_step)
+
         # Shaped reward
         new_goal_dists = self.compute_goal_dists()
-        progress = self.goal_dists - new_goal_dists  # Note: reversed to make positive progress a positive reward
+        progress = self.goal_dists - new_goal_dists # make progress positive, since we want to maximize
+        # old goal dist > new goal dist means progress!
+        # print("PROGRESS:", progress)
         self.goal_dists = new_goal_dists
         bandwidth_cost = np.sum(action)
         
         # Shaped reward components
-        distance_reward = progress
+        distance_reward = progress # TODO: maybe instead just simply minimize distance?
         communication_penalty = -0.1 * bandwidth_cost
-        goal_reward = 10 if terminated else 0
+        goal_reward = 10 if terminated else 0 # TODO: maybe make all rewards negative to be consistent
         time_penalty = -0.01  # Small penalty for each step to encourage faster completion
         
         alpha = [1, 1, 1, 1] # TODO: tune
         # Combine reward components
-        reward = alpha[0] * distance_reward 
-                + alpha[1] * communication_penalty 
-                + alpha[2] * goal_reward 
-                + alpha[3] * time_penalty
+        # reward = alpha[0] * distance_reward \
+        #         + alpha[1] * communication_penalty \
+        #         + alpha[2] * goal_reward \
+        #         + alpha[3] * time_penalty
+        reward = distance_reward + goal_reward + time_penalty + communication_penalty
 
-        # stop if all agents reached goal or time limit reached
-        terminated = -1 not in self.sim.done
-        truncated = self.sim.t == self.t_max
-        info = {}
+        # I THINK DISTANCE REWARD IS NEGATIVE WHICH FUCKS IT UP
 
         return (new_observation, reward, terminated, truncated, info)
 
