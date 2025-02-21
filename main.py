@@ -57,42 +57,25 @@ tensorboard_callback = TensorboardCallback()
 episode_callback = EpisodeCallback()
 
 # Train the model
-model.learn(total_timesteps=1000000, callback=[eval_callback, tensorboard_callback, episode_callback]) # TODO: increase timesteps (10x)?
+model.learn(total_timesteps=10000000, callback=[eval_callback, tensorboard_callback, episode_callback]) # TODO: increase timesteps (10x)?
 
 # Save the final model
 model.save("comm-v1")
 
-
-# # model = PPO("MlpPolicy", vec_env, verbose=1).learn(5000) # TODO: decide whether to format observation space as dict or flatten
-# model = PPO("MultiInputPolicy", env, verbose=1)
-# # model.learn(total_timesteps=25000)
-# # model.save("comm-v1")
-
 # model.load("comm-v1")
 
-# obs, _ = env.reset()
-# # n_steps = 1000
-# # for step in range(n_steps):
+# # Evaluate the model
+# obs = env.reset()
 # while True:
-#     action, _ = model.predict(obs, deterministic=True)
-#     # action, _ = model.predict(obs) # TODO: decide whether deterministic
-#     # print(f"Step {step + 1}")
-#     print("Action: ", action)
-#     obs, reward, done, stopped, info = env.step(action)
-#     print("obs=", obs, "reward=", reward, "done=", done)
+#     action, _ = model.predict(obs)
+#     obs, reward, done, info = env.step(action)
 #     env.render()
-
-#     # # Add a short pause to update the rendering window
-#     # import time
-#     # time.sleep(0.01)
-
 #     if done:
-#         print("Goal reached!", "reward=", reward)
-#         break
+#         obs = env.reset()
 
-# # # Keep the plot open after the loop ends
-# # import matplotlib.pyplot as plt
-# # plt.show()
+# # Keep the plot open after the loop ends
+# import matplotlib.pyplot as plt
+# plt.show()
 
 # # Things to track/plot during training:
 # # policy loss, value loss, cumulative reward -> use tensorboard

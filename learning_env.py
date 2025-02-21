@@ -8,11 +8,9 @@ import random
 
 class LearningEnv(gym.Env):
 
-    # TODO: ADD COMM FREQUENCY
-
     metadata = {} # TODO
 
-    def __init__(self, m=5, n=5, num_walls=10, to_render=False):
+    def __init__(self, m=5, n=5, num_walls=10, to_render=False, comm_interval=5):
         super(LearningEnv, self).__init__()
         self.to_render = to_render
 
@@ -39,6 +37,9 @@ class LearningEnv(gym.Env):
 
         self.max_steps = 10000
         self.current_step = 0
+
+        self.comm_interval = comm_interval  # Number of timesteps between communication decisions
+        self.steps_since_last_comm = 0
 
     def normalize_obs(self, obs):
             return 2 * (obs - self.obs_low) / (self.obs_high - self.obs_low) - 1
@@ -143,75 +144,73 @@ class LearningEnv(gym.Env):
         self.sim = self.initialize_sim()
         self.goal_dists = self.compute_goal_dists()
         self.current_step = 0
+        self.steps_since_last_comm = 0
         return self.formatted_observation(), {}
 
     def step(self, action):
+        total_reward = 0
+        for _ in range(self.comm_interval):
+            self.current_step += 1
+            self.steps_since_last_comm += 1
 
-        self.current_step += 1
+            # Move simulation forward
+            x = self.sim.move()
 
-        # Reshape flattened action back to 3D
-        action_3d = action.reshape((self.n, self.n, self.m))
-
-        count = 0
-        # execute communications
-        for a in range(self.n):
-            for b in range(self.n):
+            # Run individual sensing
+            for r in range(self.n):
                 for h in range(self.m):
-                    if action_3d[a][b][h]:
-                        count += 1
-                        self.sim.infra.share(a, b, h)
+                    self.sim.infra.sense(r, h)
 
-        # print("TOTAL COMM COUNT:", count)
+            # Only execute communications if it's time
+            if self.steps_since_last_comm >= self.comm_interval:
+                self.steps_since_last_comm = 0
+                
+                # Reshape flattened action back to 3D
+                action_3d = action.reshape((self.n, self.n, self.m))
 
-        # iterate simulation
-        x = self.sim.move()
+                count = 0
+                # execute communications
+                for a in range(self.n):
+                    for b in range(self.n):
+                        for h in range(self.m):
+                            if action_3d[a][b][h]:
+                                count += 1
+                                self.sim.infra.share(a, b, h)
 
-        # run individual sensing
-        for r in range(self.n):
-            for h in range(self.m):
-                self.sim.infra.sense(r, h)
+                bandwidth_cost = np.sum(action)
+            else:
+                count = 0
+                bandwidth_cost = 0
 
-        # get new observation
+            # Check if episode should terminate
+            terminated = all(self.sim.done[i] != -1 for i in range(self.n))
+            truncated = self.current_step >= self.max_steps
+
+            if terminated or truncated:
+                break
+
+            # Compute reward for this timestep
+            new_goal_dists = self.compute_goal_dists()
+            progress_reward = self.goal_dists - new_goal_dists
+            self.goal_dists = new_goal_dists
+            comm_penalty = -1 * bandwidth_cost
+            completion_reward = 0 if -1 in self.sim.done else 1000
+            time_penalty = -0.1
+            
+            step_reward = progress_reward + comm_penalty + completion_reward + time_penalty
+            # print(step_reward, ':', progress_reward, comm_penalty, completion_reward, time_penalty)
+            total_reward += step_reward
+
+        # Get new observation
         new_observation = self.formatted_observation()
 
-
-        # TODO: NEED TO MAKE TERMINATION CONDITION REINITIALIZE A NEW RANDOMIZED ENVIRONMENT
-
-        # Check if episode should terminate
-        terminated = all(self.sim.done[i] != -1 for i in range(self.n))  # All robots reached goals
-        truncated = self.current_step >= self.max_steps  # Max steps reached
         info = {}
-
         if terminated:
             print("TERMINATED", self.current_step)
         if truncated:
             print("TRUNCATED", self.current_step)
 
-        # Shaped reward
-        new_goal_dists = self.compute_goal_dists()
-        progress = self.goal_dists - new_goal_dists # make progress positive, since we want to maximize
-        # old goal dist > new goal dist means progress!
-        # print("PROGRESS:", progress)
-        self.goal_dists = new_goal_dists
-        bandwidth_cost = np.sum(action)
-        
-        # Shaped reward components
-        distance_reward = progress # TODO: maybe instead just simply minimize distance?
-        communication_penalty = -0.1 * bandwidth_cost
-        goal_reward = 10 if terminated else 0 # TODO: maybe make all rewards negative to be consistent
-        time_penalty = -0.01  # Small penalty for each step to encourage faster completion
-        
-        alpha = [1, 1, 1, 1] # TODO: tune
-        # Combine reward components
-        # reward = alpha[0] * distance_reward \
-        #         + alpha[1] * communication_penalty \
-        #         + alpha[2] * goal_reward \
-        #         + alpha[3] * time_penalty
-        reward = distance_reward + goal_reward + time_penalty + communication_penalty
-
-        # I THINK DISTANCE REWARD IS NEGATIVE WHICH FUCKS IT UP
-
-        return (new_observation, reward, terminated, truncated, info)
+        return new_observation, total_reward, terminated, truncated, info
 
     def render(self):
         if self.to_render:
